@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>클래식 지뢰찾기 - 개선 UI</title>
+<style>
+body {
+    font-family: Arial, sans-serif;
+    background:#2b2b2b;
+    color:#fff;
+    display:flex; flex-direction:column; align-items:center;
+    padding:20px;
+}
+#controls {margin-bottom:15px;}
+button {cursor:pointer; margin-right:5px; padding:5px 10px; font-size:14px;}
+#board {display:grid; gap:2px; margin-top:10px;}
+.cell {
+    width:32px; height:32px;
+    background:#4b4b4b;
+    color:#fff;
+    font-weight:bold;
+    border:2px solid #2b2b2b;
+    border-radius:4px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size:16px;
+    user-select:none;
+    transition:0.1s;
+}
+.cell.open {
+    background:#cfcfcf;
+    color:#000;
+    border-color:#999;
+    box-shadow: inset 0 0 3px rgba(0,0,0,0.3);
+}
+.cell.mine {
+    background:#e74c3c;
+    color:#fff;
+    border-color:#b23c2c;
+    box-shadow: inset 0 0 3px rgba(0,0,0,0.3);
+}
+.cell.flag {
+    background:#f1c40f;
+    color:#000;
+    border-color:#c1a00f;
+    box-shadow: inset 0 0 3px rgba(0,0,0,0.3);
+}
+.cell:hover {filter:brightness(1.2);}
+#message {margin-top:15px; font-size:18px;}
+</style>
+</head>
+<body>
+<h1>클래식 지뢰찾기</h1>
+<div id="controls">
+    난이도:
+    <button onclick="startGame('easy')">초급</button>
+    <button onclick="startGame('medium')">중급</button>
+    <button onclick="startGame('hard')">고급</button>
+    <button onclick="startGame(currentDifficulty)">재시작</button>
+</div>
+<div id="board"></div>
+<div id="message"></div>
+
+<script>
+// 기능은 이전과 동일
+let board=[], rows=9, cols=9, mines=10, currentDifficulty='easy', gameOver=false, firstClick=true;
+
+function startGame(difficulty){
+    currentDifficulty=difficulty;
+    gameOver=false; firstClick=true;
+    document.getElementById("message").textContent="";
+    if(difficulty==='easy'){rows=9; cols=9; mines=10;}
+    if(difficulty==='medium'){rows=16; cols=16; mines=40;}
+    if(difficulty==='hard'){rows=24; cols=24; mines=99;}
+    board = Array(rows).fill().map(()=>Array(cols).fill(null));
+    for(let r=0;r<rows;r++){
+        board[r]=[];
+        for(let c=0;c<cols;c++){
+            board[r][c]={mine:false, open:false, flag:false, count:0};
+        }
+    }
+    renderBoard();
+}
+
+function placeMines(safeR,safeC){
+    let placed=0;
+    while(placed<mines){
+        let r=Math.floor(Math.random()*rows);
+        let c=Math.floor(Math.random()*cols);
+        if(!board[r][c].mine && Math.max(Math.abs(r-safeR), Math.abs(c-safeC))>1){
+            board[r][c].mine=true;
+            placed++;
+        }
+    }
+    calculateNumbers();
+}
+
+function calculateNumbers(){
+    for(let r=0;r<rows;r++){
+        for(let c=0;c<cols;c++){
+            if(board[r][c].mine) continue;
+            let count=0;
+            for(let dr=-1;dr<=1;dr++){
+                for(let dc=-1;dc<=1;dc++){
+                    let nr=r+dr, nc=c+dc;
+                    if(nr>=0 && nr<rows && nc>=0 && nc<cols && board[nr][nc].mine) count++;
+                }
+            }
+            board[r][c].count=count;
+        }
+    }
+}
+
+function renderBoard(){
+    const boardDiv=document.getElementById("board");
+    boardDiv.innerHTML="";
+    boardDiv.style.gridTemplateRows=`repeat(${rows}, 32px)`;
+    boardDiv.style.gridTemplateColumns=`repeat(${cols}, 32px)`;
+    for(let r=0;r<rows;r++){
+        for(let c=0;c<cols;c++){
+            const btn=document.createElement("div");
+            btn.className="cell";
+            const cell=board[r][c];
+            if(cell.open){
+                btn.classList.add(cell.mine?"mine":"open");
+                btn.textContent=cell.mine?"💣":(cell.count>0?cell.count:"");
+            } else if(cell.flag){
+                btn.classList.add("flag");
+                btn.textContent="🚩";
+            }
+            btn.addEventListener('click',()=>openCell(r,c));
+            btn.addEventListener('contextmenu',(e)=>{
+                e.preventDefault();
+                toggleFlag(r,c);
+            });
+            boardDiv.appendChild(btn);
+        }
+    }
+}
+
+function toggleFlag(r,c){
+    if(gameOver || board[r][c].open) return;
+    board[r][c].flag=!board[r][c].flag;
+    renderBoard();
+}
+
+function openCell(r,c){
+    if(gameOver || board[r][c].flag) return;
+    if(firstClick){
+        placeMines(r,c);
+        firstClick=false;
+    }
+    const cell = board[r][c];
+
+    if(cell.open && cell.count>0){
+        let flagged=0;
+        for(let dr=-1;dr<=1;dr++){
+            for(let dc=-1;dc<=1;dc++){
+                let nr=r+dr, nc=c+dc;
+                if(nr>=0 && nr<rows && nc>=0 && nc<cols && board[nr][nc].flag) flagged++;
+            }
+        }
+        if(flagged===cell.count){
+            for(let dr=-1;dr<=1;dr++){
+                for(let dc=-1;dc<=1;dc++){
+                    let nr=r+dr, nc=c+dc;
+                    if(nr>=0 && nr<rows && nc>=0 && nc<cols && !board[nr][nc].open && !board[nr][nc].flag){
+                        openCell(nr,nc);
+                    }
+                }
+            }
+            return;
+        }
+    }
+
+    cell.open=true;
+    if(cell.mine){
+        revealMines();
+        document.getElementById("message").textContent="💥 게임 오버!";
+        gameOver=true;
+        renderBoard();
+        return;
+    }
+    if(cell.count===0) openAdjacent(r,c);
+    renderBoard();
+    checkWin();
+}
+
+function openAdjacent(r,c){
+    for(let dr=-1;dr<=1;dr++){
+        for(let dc=-1;dc<=1;dc++){
+            let nr=r+dr, nc=c+dc;
+            if(nr>=0 && nr<rows && nc>=0 && nc<cols){
+                const ncell=board[nr][nc];
+                if(!ncell.open && !ncell.mine){
+                    ncell.open=true;
+                    if(ncell.count===0) openAdjacent(nr,nc);
+                }
+            }
+        }
+    }
+}
+
+function revealMines(){
+    for(let r=0;r<rows;r++){
+        for(let c=0;c<cols;c++){
+            if(board[r][c].mine) board[r][c].open=true;
+        }
+    }
+}
+
+function checkWin(){
+    let opened=0;
+    for(let r=0;r<rows;r++){
+        for(let c=0;c<cols;c++){
+            if(board[r][c].open) opened++;
+        }
+    }
+    if(opened===rows*cols-mines){
+        document.getElementById("message").textContent="🎉 승리!";
+        gameOver=true;
+        revealMines();
+        renderBoard();
+    }
+}
+
+// 초기 실행
+startGame('easy');
+</script>
+</body>
+</html>
